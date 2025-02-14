@@ -1,3 +1,4 @@
+import { isObjecty } from "@/utils"
 
 export default function history(Alpine) {
     Alpine.magic('queryString', (el, { interceptor }) =>  {
@@ -37,14 +38,17 @@ export default function history(Alpine) {
     Alpine.history = { track }
 }
 
-export function track(name, initialSeedValue, alwaysShow = false) {
+export function track(name, initialSeedValue, alwaysShow = false, except = null) {
     let { has, get, set, remove } = queryStringUtils()
 
     let url = new URL(window.location.href)
     let isInitiallyPresentInUrl = has(url, name)
     let initialValue = isInitiallyPresentInUrl ? get(url, name) : initialSeedValue
     let initialValueMemo = JSON.stringify(initialValue)
+    let exceptValueMemo = [false, null, undefined].includes(except) ? initialSeedValue : JSON.stringify(except)
+
     let hasReturnedToInitialValue = (newValue) => JSON.stringify(newValue) === initialValueMemo
+    let hasReturnedToExceptValue = (newValue) =>  JSON.stringify(newValue) === exceptValueMemo
 
     if (alwaysShow) url = set(url, name, initialValue)
 
@@ -57,11 +61,37 @@ export function track(name, initialSeedValue, alwaysShow = false) {
 
         let url = new URL(window.location.href)
 
+        // This block of code is what needs to be changed for this failing test to pass:
         if (! alwaysShow && ! isInitiallyPresentInUrl && hasReturnedToInitialValue(newValue)) {
+            url = remove(url, name)
+        // This is so that when deeply nested values are tracked, but their parent array/object
+        // is removed, we can handle it gracefully by removing the entry from the URL instead
+        // of letting it get set to `?someKey=undefined` which causes issues on refresh...
+        } else if (newValue === undefined) {
+            url = remove(url, name)
+        } else if (! alwaysShow && hasReturnedToExceptValue(newValue)) {
             url = remove(url, name)
         } else {
             url = set(url, name, newValue)
         }
+
+        // Right now, the above block, checks a few conditions and updates/removes an entry from the query string.
+        // The new strategy needs to be something like:
+        // - If "alwaysShow" is toggled on, then just "set" the whole thing with no deep diff
+        // - Otherwise, run a deep comparison callback (given the original value and new value).
+        //   - The callback recieves two params (leaf name and value)
+        //   - Check leaf name and value for existance in the original URL from page load. If it's there, just call "set"
+        //   - Check leaf name and value for equivelance to original name and value, if equal, call "remove", otherwise, "set"
+
+        // That code will look something like this:
+
+        // if (alwaysShow) {
+        //     set(url, name, newValue)
+        // } else {
+        //     deepCompare(name, newValue, originalValue, (leafName, leafValue) => {
+        //         // ....
+        //     })
+        // }
 
         strategy(url, name, { value: newValue})
     }
@@ -127,6 +157,8 @@ function push(url, key, object) {
 }
 
 function unwrap(object) {
+    if (object === undefined) return undefined
+
     return JSON.parse(JSON.stringify(object))
 }
 
@@ -137,7 +169,7 @@ function queryStringUtils() {
 
             if (! search) return false
 
-            let data = fromQueryString(search)
+            let data = fromQueryString(search, key)
 
             return Object.keys(data).includes(key)
         },
@@ -146,21 +178,21 @@ function queryStringUtils() {
 
             if (! search) return false
 
-            let data = fromQueryString(search)
+            let data = fromQueryString(search, key)
 
             return data[key]
         },
         set(url, key, value) {
-            let data = fromQueryString(url.search)
+            let data = fromQueryString(url.search, key)
 
-            data[key] = value
+            data[key] = stripNulls(unwrap(value))
 
             url.search = toQueryString(data)
 
             return url
         },
         remove(url, key) {
-            let data = fromQueryString(url.search)
+            let data = fromQueryString(url.search, key)
 
             delete data[key]
 
@@ -169,6 +201,17 @@ function queryStringUtils() {
             return url
         },
     }
+}
+
+function stripNulls(value) {
+    if (! isObjecty(value)) return value
+
+    for (let key in value) {
+        if (value[key] === null) delete value[key]
+        else value[key] = stripNulls(value[key])
+    }
+
+    return value
 }
 
 // This function converts JavaScript data to bracketed query string notation...
@@ -180,9 +223,12 @@ function toQueryString(data) {
         Object.entries(data).forEach(([iKey, iValue]) => {
             let key = baseKey === '' ? iKey : `${baseKey}[${iKey}]`
 
-            if (! isObjecty(iValue)) {
+            if (iValue === null) {
+                entries[key] = '';
+            } else if (! isObjecty(iValue)) {
                 entries[key] = encodeURIComponent(iValue)
                     .replaceAll('%20', '+') // Conform to RFC1738
+                    .replaceAll('%2C', ',')
             } else {
                 entries = {...entries, ...buildQueryStringEntries(iValue, entries, key)}
             }
@@ -193,13 +239,12 @@ function toQueryString(data) {
 
     let entries = buildQueryStringEntries(data)
 
-
     return Object.entries(entries).map(([key, value]) => `${key}=${value}`).join('&')
 }
 
 // This function converts bracketed query string notation back to JS data...
 // "items[0][0]=foo" -> { items: [['foo']] }
-function fromQueryString(search) {
+function fromQueryString(search, queryKey) {
     search = search.replace('?', '')
 
     if (search === '') return {}
@@ -221,19 +266,26 @@ function fromQueryString(search) {
 
     let entries = search.split('&').map(i => i.split('='))
 
-    let data = {}
+    // let data = {} creates a security (XSS) vulnerability here. We need to use
+    // Object.create(null) instead so that we have a "pure" object that doesnt
+    // inherit Object.prototype and expose the js internals to manipulation.
+    let data = Object.create(null)
 
     entries.forEach(([key, value]) => {
         // Query string params don't always have values... (`?foo=`)
-        if (! value) return
+        if ( typeof value == 'undefined' ) return;
 
         value = decodeURIComponent(value.replaceAll('+', '%20'))
 
-        if (! key.includes('[')) {
+        let decodedKey = decodeURIComponent(key)
+
+        let shouldBeHandledAsArray = decodedKey.includes('[') && decodedKey.startsWith(queryKey)
+
+        if (!shouldBeHandledAsArray) {
             data[key] = value
         } else {
             // Convert to dot notation because it's easier...
-            let dotNotatedKey = key.replaceAll('[', '.').replaceAll(']', '')
+            let dotNotatedKey = decodedKey.replaceAll('[', '.').replaceAll(']', '')
 
             insertDotNotatedValueIntoData(dotNotatedKey, value, data)
         }
@@ -241,4 +293,3 @@ function fromQueryString(search) {
 
     return data
 }
-

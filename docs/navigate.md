@@ -90,16 +90,162 @@ Here is an example of an `<audio>` player element being persisted across pages u
 
 If the above HTML appears on both pages — the current page, and the next one — the original element will be re-used on the new page. In the case of an audio player, the audio playback won't be interrupted when navigating from one page to another.
 
-## Updating the page before navigating away
+Please be aware that the persisted element must be placed outside your Livewire components. A common practice is to position the persisted element in your main layout, such as `resources/views/components/layouts/app.blade.php`.
 
-Livewire dispatches a useful event called `livewire:navigating` that allows you to execute JavaScript immediately BEFORE the current page is navigated away from.
+```html
+<!-- resources/views/components/layouts/app.blade.php -->
 
-This is useful for scenarios like modifying the contents of the current page before it is stored and reloaded as the back-button cache HTML.
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <title>{{ $title ?? 'Page Title' }}</title>
+    </head>
+    <body>
+        <main>
+            {{ $slot }}
+        </main>
+
+        @persist('player') <!-- [tl! highlight:2] -->
+            <audio src="{{ $episode->file }}" controls></audio>
+        @endpersist
+    </body>
+</html>
+```
+
+### Highlighting active links
+
+You might be used to highlighting the currently active page link in a navbar using server-side Blade like so:
+
+```blade
+<nav>
+    <a href="/" class="@if (request->is('/')) font-bold text-zinc-800 @endif">Dashboard</a>
+    <a href="/posts" class="@if (request->is('/posts')) font-bold text-zinc-800 @endif">Posts</a>
+    <a href="/users" class="@if (request->is('/users')) font-bold text-zinc-800 @endif">Users</a>
+</nav>
+```
+
+However, this will not work inside persisted elements as they are re-used between page loads. Instead, you should use Livewire's `wire:current` directive to highlight the currently active link.
+
+Simply pass any CSS classes you want to apply to the currently active link to `wire:current`:
+
+```blade
+<nav>
+    <a href="/dashboard" ... wire:current="font-bold text-zinc-800">Dashboard</a>
+    <a href="/posts" ... wire:current="font-bold text-zinc-800">Posts</a>
+    <a href="/users" ... wire:current="font-bold text-zinc-800">Users</a>
+</nav>
+```
+
+Now, when the `/posts` page is visited, the "Posts" link will have a stronger font treatment than the other links.
+
+Read more in the [`wire:current` documentation](/docs/wire-current).
+
+### Preserving scroll position
+
+By default, Livewire will preserve the scroll position of a page when navigating back and forth between pages. However, sometimes you may want to preserve the scroll position of an individual element you are persisting between page loads.
+
+To do this, you must add `wire:scroll` to the element containing a scrollbar like so:
+
+```html
+@persist('scrollbar')
+<div class="overflow-y-scroll" wire:scroll> <!-- [tl! highlight] -->
+    <!-- ... -->
+</div>
+@endpersist
+```
+
+## JavaScript hooks
+
+Each page navigation triggers three lifecycle hooks:
+
+* `livewire:navigate`
+* `livewire:navigating`
+* `livewire:navigated`
+
+It's important to note that these three hooks events are dispatched on navigations of all types. This includes manual navigation using `Livewire.navigate()`, redirecting with navigation enabled, and back and forward button presses in the browser.
+
+Here's an example of registering listeners for each of these events:
 
 ```js
-document.addEventListener('livewire:navigating', () => {
-    // Mutate the HTML before the page is navigated away...
+document.addEventListener('livewire:navigate', (event) => {
+    // Triggers when a navigation is triggered.
+
+    // Can be "cancelled" (prevent the navigate from actually being performed):
+    event.preventDefault()
+
+    // Contains helpful context about the navigation trigger:
+    let context = event.detail
+
+    // A URL object of the intended destination of the navigation...
+    context.url
+
+    // A boolean [true/false] indicating whether or not this navigation
+    // was triggered by a back/forward (history state) navigation...
+    context.history
+
+    // A boolean [true/false] indicating whether or not there is
+    // cached version of this page to be used instead of
+    // fetching a new one via a network round-trip...
+    context.cached
 })
+
+document.addEventListener('livewire:navigating', () => {
+    // Triggered when new HTML is about to swapped onto the page...
+
+    // This is a good place to mutate any HTML before the page
+    // is navigated away from...
+})
+
+document.addEventListener('livewire:navigated', () => {
+    // Triggered as the final step of any page navigation...
+
+    // Also triggered on page-load instead of "DOMContentLoaded"...
+})
+```
+
+> [!warning] Event listeners will persist across pages
+>
+> When you attach an event listener to the document it will not be removed when you navigate to a different page. This can lead to unexpected behaviour if you need code to run only after navigating to a specific page, or if you add the same event listener on every page. If you do not remove your event listener it may cause exceptions on other pages when it's looking for elements that do not exist, or you may end up with the event listener executing multiple times per navigation.
+>
+> An easy method to remove an event listener after it runs is to pass the option `{once: true}` as a third parameter to the `addEventListener` function.
+> ```js
+> document.addEventListener('livewire:navigated', () => {
+>     // ...
+> }, { once: true })
+> ```
+
+## Manually visiting a new page
+
+In addition to `wire:navigate`, you can manually call the `Livewire.navigate()` method to trigger a visit to a new page using JavaScript:
+
+```html
+<script>
+    // ...
+
+    Livewire.navigate('/new/url')
+</script>
+```
+
+## Using with analytics software
+
+When navigating pages using `wire:navigate` in your app, any `<script>` tags in the `<head>` only evaluate when the page is initially loaded.
+
+This creates a problem for analytics software such as [Fathom Analytics](https://usefathom.com/). These tools rely on a `<script>` snippet being evaluated on every single page change, not just the first.
+
+Tools like [Google Analytics](https://marketingplatform.google.com/about/analytics/) are smart enough to handle this automatically, however, when using Fathom Analytics, you must add `data-spa="auto"` to your script tag to ensure each page visit is tracked properly:
+
+```blade
+<head>
+    <!-- ... -->
+
+    <!-- Fathom Analytics -->
+    @if (! config('app.debug'))
+        <script src="https://cdn.usefathom.com/script.js" data-site="ABCDEFG" data-spa="auto" defer></script> <!-- [tl! highlight] -->
+    @endif
+</head>
 ```
 
 ## Script evaluation
@@ -163,6 +309,9 @@ In the below example, _page two_ includes a new JavaScript library for a third-p
     <script src="/third-party.js"></script>
 </head>
 ```
+
+> [!info] Head assets are blocking
+> If you are navigating to a new page that contains an asset like `<script src="...">` in the head tag. That asset will be fetched and processed before the navigation is complete and the new page is swapped in. This might be surprising behavior, but it ensures any scripts that depend on those assets will have immediate access to them.
 
 ### Reloading when assets change
 
@@ -229,7 +378,7 @@ If you have a `<script>` tag in the body that you only want to be run once, you 
 
 ## Customizing the progress bar
 
-When a page takes longer than 150ms to load, Livewirew will show a progress bar at the top of the page.
+When a page takes longer than 150ms to load, Livewire will show a progress bar at the top of the page.
 
 You can customize the color of this bar or disable it all together inside Livewire's config file (`config/livewire.php`):
 

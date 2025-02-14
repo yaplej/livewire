@@ -26,8 +26,9 @@ class CreatePost extends Component
             $this->only(['title', 'content'])
         );
 
-        return $this->redirect('/posts')
-            ->with('status', 'Post successfully created.');
+        session()->flash('status', 'Post successfully updated.');
+
+        return $this->redirect('/posts');
     }
 
     public function render()
@@ -57,9 +58,9 @@ After the new post is created in the database, we redirect the user to the `Show
 
 To avoid storing incomplete or dangerous user input, most forms need some sort of input validation.
 
-Livewire makes validating your forms as simple as adding `#[Rule]` attributes above the properties you want to be validated.
+Livewire makes validating your forms as simple as adding `#[Validate]` attributes above the properties you want to be validated.
 
-Once a property has a `#[Rule]` attribute attached to it, the validation rule will be applied to the property's value any time it's updated server-side.
+Once a property has a `#[Validate]` attribute attached to it, the validation rule will be applied to the property's value any time it's updated server-side.
 
 Let's add some basic validation rules to the `$title` and `$content` properties in our `CreatePost` component:
 
@@ -68,16 +69,16 @@ Let's add some basic validation rules to the `$title` and `$content` properties 
 
 namespace App\Livewire;
 
-use Livewire\Attributes\Rule; // [tl! highlight]
+use Livewire\Attributes\Validate; // [tl! highlight]
 use Livewire\Component;
 use App\Models\Post;
 
 class CreatePost extends Component
 {
-    #[Rule('required')] // [tl! highlight]
+    #[Validate('required')] // [tl! highlight]
     public $title = '';
 
-    #[Rule('required')] // [tl! highlight]
+    #[Validate('required')] // [tl! highlight]
     public $content = '';
 
     public function save()
@@ -141,15 +142,15 @@ Let's rewrite the `CreatePost` component to use a `PostForm` class:
 
 namespace App\Livewire\Forms;
 
-use Livewire\Attributes\Rule;
+use Livewire\Attributes\Validate;
 use Livewire\Form;
 
 class PostForm extends Form
 {
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $title = '';
 
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $content = '';
 }
 ```
@@ -159,20 +160,20 @@ class PostForm extends Form
 
 namespace App\Livewire;
 
+use App\Livewire\Forms\PostForm;
 use Livewire\Component;
 use App\Models\Post;
-use App\Livewire\Forms\PostForm;
 
 class CreatePost extends Component
 {
-    public PostForm $form;
+    public PostForm $form; // [tl! highlight]
 
     public function save()
     {
         $this->validate();
 
         Post::create(
-            $this->form->all()
+            $this->form->all() // [tl! highlight]
         );
 
         return $this->redirect('/posts');
@@ -208,20 +209,22 @@ If you'd like, you can also extract the post creation logic into the form object
 
 namespace App\Livewire\Forms;
 
-use Livewire\Attributes\Rule;
-use Livewire\Form;
+use Livewire\Attributes\Validate;
 use App\Models\Post;
+use Livewire\Form;
 
 class PostForm extends Form
 {
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $title = '';
 
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $content = '';
 
-    public function store()
+    public function store() // [tl! highlight:5]
     {
+        $this->validate();
+
         Post::create($this->all());
     }
 }
@@ -236,7 +239,7 @@ class CreatePost extends Component
 
     public function save()
     {
-        $this->form->store();
+        $this->form->store(); // [tl! highlight]
 
         return $this->redirect('/posts');
     }
@@ -254,8 +257,8 @@ Here's what it would look like to use this same form object for an `UpdatePost` 
 
 namespace App\Livewire;
 
-use Livewire\Component;
 use App\Livewire\Forms\PostForm;
+use Livewire\Component;
 use App\Models\Post;
 
 class UpdatePost extends Component
@@ -286,7 +289,7 @@ class UpdatePost extends Component
 
 namespace App\Livewire\Forms;
 
-use Livewire\Attributes\Rule;
+use Livewire\Attributes\Validate;
 use Livewire\Form;
 use App\Models\Post;
 
@@ -294,10 +297,10 @@ class PostForm extends Form
 {
     public ?Post $post;
 
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $title = '';
 
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $content = '';
 
     public function setPost(Post $post)
@@ -311,11 +314,15 @@ class PostForm extends Form
 
     public function store()
     {
+        $this->validate();
+
         Post::create($this->only(['title', 'content']));
     }
 
     public function update()
     {
+        $this->validate();
+
         $this->post->update(
             $this->all()
         );
@@ -336,22 +343,24 @@ If you are using a form object, you may want to reset the form after it has been
 
 namespace App\Livewire\Forms;
 
-use Livewire\Attributes\Rule;
+use Livewire\Attributes\Validate;
 use App\Models\Post;
 use Livewire\Form;
 
 class PostForm extends Form
 {
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $title = '';
 
-    #[Rule('required|min:5')]
+    #[Validate('required|min:5')]
     public $content = '';
 
     // ...
 
     public function store()
     {
+        $this->validate();
+
         Post::create($this->all());
 
         $this->reset(); // [tl! highlight]
@@ -366,8 +375,146 @@ $this->reset('title');
 
 // Or multiple at once...
 
-$this->reset('title', 'content');
+$this->reset(['title', 'content']);
 ```
+
+### Pulling form fields
+
+Alternatively, you can use the `pull()` method to both retrieve a form's properties and reset them in one operation.
+
+```php
+<?php
+
+namespace App\Livewire\Forms;
+
+use Livewire\Attributes\Validate;
+use App\Models\Post;
+use Livewire\Form;
+
+class PostForm extends Form
+{
+    #[Validate('required|min:5')]
+    public $title = '';
+
+    #[Validate('required|min:5')]
+    public $content = '';
+
+    // ...
+
+    public function store()
+    {
+        $this->validate();
+
+        Post::create(
+            $this->pull() // [tl! highlight]
+        );
+    }
+}
+```
+
+You can also pull specific properties by passing the property names into the `pull()` method:
+
+```php
+// Return a value before resetting...
+$this->pull('title');
+
+ // Return a key-value array of properties before resetting...
+$this->pull(['title', 'content']);
+```
+
+### Using Rule objects
+
+If you have more sophisticated validation scenarios where Laravel's `Rule` objects are necessary, you can alternatively define a `rules()` method to declare your validation rules like so:
+
+```php
+<?php
+
+namespace App\Livewire\Forms;
+
+use Illuminate\Validation\Rule;
+use App\Models\Post;
+use Livewire\Form;
+
+class PostForm extends Form
+{
+    public ?Post $post;
+
+    public $title = '';
+
+    public $content = '';
+
+    protected function rules()
+    {
+        return [
+            'title' => [
+                'required',
+                Rule::unique('posts')->ignore($this->post), // [tl! highlight]
+            ],
+            'content' => 'required|min:5',
+        ];
+    }
+
+    // ...
+
+    public function update()
+    {
+        $this->validate();
+
+        $this->post->update($this->all());
+
+        $this->reset();
+    }
+}
+```
+
+When using a `rules()` method instead of `#[Validate]`, Livewire will only run the validation rules when you call `$this->validate()`, rather than every time a property is updated.
+
+If you are using real-time validation or any other scenario where you'd like Livewire to validate specific fields after every request, you can use `#[Validate]` without any provided rules like so:
+
+```php
+<?php
+
+namespace App\Livewire\Forms;
+
+use Livewire\Attributes\Validate;
+use Illuminate\Validation\Rule;
+use App\Models\Post;
+use Livewire\Form;
+
+class PostForm extends Form
+{
+    public ?Post $post;
+
+    #[Validate] // [tl! highlight]
+    public $title = '';
+
+    public $content = '';
+
+    protected function rules()
+    {
+        return [
+            'title' => [
+                'required',
+                Rule::unique('posts')->ignore($this->post),
+            ],
+            'content' => 'required|min:5',
+        ];
+    }
+
+    // ...
+
+    public function update()
+    {
+        $this->validate();
+
+        $this->post->update($this->all());
+
+        $this->reset();
+    }
+}
+```
+
+Now if the `$title` property is updated before the form is submitted—like when using [`wire:model.blur`](/docs/wire-model#updating-on-blur-event)—the validation for `$title` will be run.
 
 ### Showing a loading indicator
 
@@ -430,7 +577,7 @@ Livewire handles this sort of thing automatically. By using `.live` or `.blur` o
 ```
 
 ```php
-#[Rule('required|min:5')]
+#[Validate('required|min:5')]
 public $title = '';
 ```
 
@@ -447,7 +594,7 @@ If you want to automatically save a form as the user fills it out rather than wa
 
 namespace App\Livewire;
 
-use Livewire\Attributes\Rule;
+use Livewire\Attributes\Validate;
 use Livewire\Component;
 use App\Models\Post;
 
@@ -455,18 +602,20 @@ class UpdatePost extends Component
 {
     public Post $post;
 
-    #[Rule('required')]
+    #[Validate('required')]
     public $title = '';
 
-    #[Rule('required')]
+    #[Validate('required')]
     public $content = '';
 
     public function mount(Post $post)
     {
         $this->post = $post;
+        $this->title = $post->title;
+        $this->content = $post->content;
     }
 
-    public function updated($name, $value)
+    public function updated($name, $value) // [tl! highlight:5]
     {
         $this->post->update([
             $name => $value,
@@ -498,7 +647,7 @@ In the above example, when a user completes a field (by clicking or tabbing to t
 
 We can use this hook to update only that specific field in the database.
 
-Additionally, because we have the `#[Rule]` attributes attached to those properties, the validation rules will be run before the property is updated and the `updated()` hook is called.
+Additionally, because we have the `#[Validate]` attributes attached to those properties, the validation rules will be run before the property is updated and the `updated()` hook is called.
 
 To learn more about the "updated" lifecycle hook and other hooks, [visit the lifecycle hooks documentation](/docs/lifecycle-hooks).
 

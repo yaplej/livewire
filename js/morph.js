@@ -1,4 +1,4 @@
-import { trigger } from "@/events"
+import { trigger } from "@/hooks"
 import { closestComponent } from "@/store"
 import Alpine from 'alpinejs'
 
@@ -31,6 +31,11 @@ export function morph(component, el, html) {
 
             trigger('morph.updating', { el, toEl, component, skip, childrenOnly })
 
+            // bypass DOM diffing for children by overwriting the content
+            if (el.__livewire_replace === true) el.innerHTML = toEl.innerHTML;
+            // completely bypass DOM diffing for this element and all children
+            if (el.__livewire_replace_self === true) { el.outerHTML = toEl.outerHTML; return skip(); }
+
             if (el.__livewire_ignore === true) return skip()
             if (el.__livewire_ignore_self === true) childrenOnly()
 
@@ -43,7 +48,7 @@ export function morph(component, el, html) {
             if (isComponentRootEl(el)) toEl.__livewire = component
         },
 
-        updated: (el, toEl) => {
+        updated: (el) => {
             if (isntElement(el)) return
 
             trigger('morph.updated', { el, component })
@@ -71,29 +76,6 @@ export function morph(component, el, html) {
             const closestComponentId = closestComponent(el).id
 
             trigger('morph.added', { el })
-
-            if (closestComponentId === component.id) {
-                // @todo
-                // if (nodeInitializer.initialize(el, component) === false) {
-                //     return skip()
-                // }
-            } else if (isComponentRootEl(el)) {
-                let data
-
-                if (message.fingerprint && closestComponentId == message.fingerprint.id) {
-                    data = {
-                        fingerprint: message.fingerprint,
-                        serverMemo: message.response.serverMemo,
-                        effects: message.response.effects
-                    }
-                }
-
-                // store.addComponent(new Component(el, this.connection, data))
-
-                // We don't need to initialize children, the
-                // new Component constructor will do that for us.
-                el.skipAddingChildren = true
-            }
         },
 
         key: (el) => {
@@ -109,6 +91,8 @@ export function morph(component, el, html) {
 
         lookahead: false,
     })
+
+    trigger('morphed', { el, component })
 }
 
 function isntElement(el) {

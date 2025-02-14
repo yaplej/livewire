@@ -1,22 +1,21 @@
-import { on } from '@/events'
-import { dataGet, dataSet } from '@/utils'
+import { on } from '@/hooks'
+import { dataGet } from '@/utils'
 import Alpine from 'alpinejs'
 import { track } from '@/plugins/history'
 
-on('component.init', ({ component, cleanup }) => {
-    let effects = component.effects
+on('effect', ({ component, effects, cleanup }) => {
     let queryString = effects['url']
 
     if (! queryString) return
 
     Object.entries(queryString).forEach(([key, value]) => {
-        let { name, as, use, alwaysShow } = normalizeQueryStringEntry(key, value)
+        let { name, as, use, alwaysShow, except } = normalizeQueryStringEntry(key, value)
 
         if (! as) as = name
 
-        let initialValue = dataGet(component.ephemeral, name)
+        let initialValue = [false, null, undefined].includes(except) ? dataGet(component.ephemeral, name) : except
 
-        let { initial, replace, push, pop } = track(as, initialValue, alwaysShow)
+        let { replace, push, pop } = track(as, initialValue, alwaysShow, except)
 
         if (use === 'replace') {
             let effectReference = Alpine.effect(() => {
@@ -25,7 +24,9 @@ on('component.init', ({ component, cleanup }) => {
 
             cleanup(() => Alpine.release(effectReference))
         } else if (use === 'push') {
-            let forgetCommitHandler = on('commit', ({ component, succeed }) => {
+            let forgetCommitHandler = on('commit', ({ component: commitComponent, succeed }) => {
+                if (component !== commitComponent) return
+
                 let beforeValue = dataGet(component.canonical, name)
 
                 succeed(() => {

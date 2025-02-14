@@ -14,8 +14,7 @@ class BrowserTest extends \Tests\BrowserTestCase
 {
     use RefreshDatabase;
 
-    /** @test */
-    public function parent_component_with_eloquent_collection_property_does_not_error_when_child_deletes_a_model_contained_within_it()
+    public function test_parent_component_with_eloquent_collection_property_does_not_error_when_child_deletes_a_model_contained_within_it()
     {
         Livewire::visit([
             new class extends Component {
@@ -23,12 +22,12 @@ class BrowserTest extends \Tests\BrowserTestCase
 
                 public function mount()
                 {
-                    $this->posts = Post::all();
+                    $this->posts = BrowserTestPost::all();
                 }
 
                 #[BaseOn('postDeleted')]
                 public function setPosts() {
-                    $this->posts = Post::all();
+                    $this->posts = BrowserTestPost::all();
                 }
 
                 public function render()
@@ -49,7 +48,7 @@ class BrowserTest extends \Tests\BrowserTestCase
 
                 public function delete($id)
                 {
-                    Post::find($id)->delete();
+                    BrowserTestPost::find($id)->delete();
                     $this->dispatch('postDeleted');
                 }
 
@@ -73,8 +72,7 @@ class BrowserTest extends \Tests\BrowserTestCase
             ;
     }
 
-    /** @test */
-    public function empty_eloquent_collection_property_is_dehydrated_without_errors()
+    public function test_empty_eloquent_collection_property_is_dehydrated_without_errors()
     {
         Livewire::visit([
             new class extends Component
@@ -127,7 +125,7 @@ class BrowserTest extends \Tests\BrowserTestCase
     }
 }
 
-class Post extends Model
+class BrowserTestPost extends Model
 {
     use Sushi;
 

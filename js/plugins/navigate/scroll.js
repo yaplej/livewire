@@ -15,8 +15,8 @@ export function restoreScrollPositionOrScrollToTop() {
             window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
         } else {
             el.scrollTo({
-                top: Number(el.getAttribute('data-scroll-x')),
-                left: Number(el.getAttribute('data-scroll-y')),
+                top: Number(el.getAttribute('data-scroll-y')),
+                left: Number(el.getAttribute('data-scroll-x')),
                 behavior: 'instant',
             })
             el.removeAttribute('data-scroll-x')
@@ -25,8 +25,10 @@ export function restoreScrollPositionOrScrollToTop() {
     }
 
     queueMicrotask(() => {
-        scroll(document.body)
+        queueMicrotask(() => { // Double microtask here to make sure scrolling restoration is the LAST thing to happen. (Even after Alpine's x-init functions)...
+            scroll(document.body)
 
-        document.querySelectorAll(['[x-navigate\\:scroll]', '[wire\\:scroll]']).forEach(scroll)
+            document.querySelectorAll(['[x-navigate\\:scroll]', '[wire\\:scroll]']).forEach(scroll)
+        })
     })
 }
