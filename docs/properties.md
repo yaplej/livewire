@@ -151,6 +151,43 @@ In the above example, after a user clicks "Add Todo", the input field holding th
 > [!warning] `reset()` won't work on values set in `mount()`
 > `reset()` will reset a property to its state before the `mount()` method was called. If you initialized the property in `mount()` to a different value, you will need to reset the property manually.
 
+## Pulling properties
+
+Alternatively, you can use the `pull()` method to both reset and retrieve the value in one operation.
+
+Here's the same example from above, but simplified with `pull()`:
+
+```php
+<?php
+
+namespace App\Livewire;
+
+use Livewire\Component;
+
+class ManageTodos extends Component
+{
+    public $todos = [];
+
+    public $todo = '';
+
+    public function addTodo()
+    {
+        $this->todos[] = $this->pull('todo'); // [tl! highlight]
+    }
+
+    // ...
+}
+```
+
+The above example is pulling a single value, but `pull()` can also be used to reset and retrieve (as a key-value pair) all or some properties:
+
+```php
+// The same as $this->all() and $this->reset();
+$this->pull();
+
+// The same as $this->only(...) and $this->reset(...);
+$this->pull(['title', 'content']);
+```
 
 ## Supported property types
 
@@ -188,9 +225,10 @@ In addition to primitive types, Livewire supports common PHP object types used i
 Supported PHP types:
 | Type | Full Class Name |
 |------|-----------------|
+| BackedEnum | `BackedEnum` |
 | Collection | `Illuminate\Support\Collection` |
 | Eloquent Collection | `Illuminate\Database\Eloquent\Collection` |
-| Model | `Illuminate\Database\Model` |
+| Model | `Illuminate\Database\Eloquent\Model` |
 | DateTime | `DateTime` |
 | Carbon | `Carbon\Carbon` |
 | Stringable | `Illuminate\Support\Stringable` |
@@ -286,10 +324,10 @@ class Customer implements Wireable
         ];
     }
 
-    public static function fromLivewire($data)
+    public static function fromLivewire($value)
     {
-        $name = $data['name'];
-        $age = $data['age'];
+        $name = $value['name'];
+        $age = $value['age'];
 
         return new static($name, $age);
     }
@@ -542,7 +580,7 @@ For example, suppose you have a Livewire component that defines a public propert
     "type": "model",
     "class": "App\Models\Post",
     "key": 1,
-    "relationships": [].
+    "relationships": []
 }
 ```
 
@@ -577,7 +615,7 @@ Now, when the Eloquent model is "dehydrated" (serialized), the original class na
     "class": "App\Models\Post", // [tl! remove]
     "class": "post", // [tl! add]
     "key": 1,
-    "relationships": [].
+    "relationships": []
 }
 ```
 
@@ -699,7 +737,7 @@ class ShowTodos extends Component
 }
 ```
 
-You might wonder, why not just call `$this->todos()` as a method directly where you need to? Why use `#[Computed]` in the first place?
+You might wonder why not just call `$this->todos()` as a method directly where you need to? Why use `#[Computed]` in the first place?
 
 The reason is that computed properties have a performance advantage, since they are automatically cached after their first usage during a single request. This means you can freely access `$this->todos` within your component and be assured that the actual method will only be called once, so that you don't run an expensive query multiple times in the same request.
 

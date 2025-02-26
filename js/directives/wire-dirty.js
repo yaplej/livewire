@@ -1,12 +1,12 @@
 import { toggleBooleanStateDirective } from './shared'
 import { directive, getDirectives } from '@/directives'
 import { dataGet, WeakBag } from '@/utils'
-import { on } from '@/events'
+import { on } from '@/hooks'
 
 let refreshDirtyStatesByComponent = new WeakBag
 
-on('commit', ({ component, respond }) => {
-    respond(() => {
+on('commit', ({ component, succeed }) => {
+    succeed(() => {
         setTimeout(() => { // Doing a "setTimeout" to let morphdom do its thing first...
             refreshDirtyStatesByComponent.each(component, i => i(false))
         })

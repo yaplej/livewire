@@ -1,8 +1,15 @@
+import { closestComponent } from '@/store'
 import { overrideMethod } from '@/$wire'
-import { on } from '@/events'
+import { on } from '@/hooks'
 import Alpine from 'alpinejs'
 
-on('effects', (component, effects) => {
+Alpine.magic('js', el => {
+    let component = closestComponent(el)
+
+    return component.$wire.js
+})
+
+on('effect', ({ component, effects }) => {
     let js = effects.js
     let xjs = effects.xjs
 
@@ -15,9 +22,10 @@ on('effects', (component, effects) => {
     }
 
     if (xjs) {
-        xjs.forEach(expression => {
-            Alpine.evaluate(component.el, expression)
+        xjs.forEach(({ expression, params }) => {
+            params = Object.values(params)
+
+            Alpine.evaluate(component.el, expression, { scope: component.jsActions, params })
         })
     }
 })
-

@@ -47,6 +47,34 @@ In the above example, when a user submits the form by clicking "Save", `wire:sub
 
 In essence, actions are a way to easily map user interactions to server-side functionality without the hassle of submitting and handling AJAX requests manually.
 
+## Refreshing a component
+
+Sometimes you may want to trigger a simple "refresh" of your component. For example, if you have a component checking the status of something in the database, you may want to show a button to your users allowing them to refresh the displayed results.
+
+You can do this using Livewire's simple `$refresh` action anywhere you would normally reference your own component method:
+
+```blade
+<button type="button" wire:click="$refresh">...</button>
+```
+
+When the `$refresh` action is triggered, Livewire will make a server-roundtrip and re-render your component without calling any methods.
+
+It's important to note that any pending data updates in your component (for example `wire:model` bindings) will be applied on the server when the component is refreshed.
+
+Internally, Livewire uses the name "commit" to refer to any time a Livewire component is updated on the server. If you prefer this terminology, you can use the `$commit` helper instead of `$refresh`. The two are identical.
+
+```blade
+<button type="button" wire:click="$commit">...</button>
+```
+
+You can also trigger a component refresh using AlpineJS in your Livewire component:
+
+```blade
+<button type="button" x-on:click="$wire.$refresh()">...</button>
+```
+
+Learn more by reading the [documentation for using Alpine inside Livewire](/docs/alpine).
+
 ## Confirming an action
 
 When allowing users to perform dangerous actions—such as deleting a post from the database—you may want to show them a confirmation alert to verify that they wish to perform that action.
@@ -176,7 +204,7 @@ In this example, the `setPostContent` action is called whenever the `trix-change
 > Within Livewire event handlers, you can access the event object via `$event`. This is useful for referencing information on the event. For example, you can access the element that triggered the event via `$event.target`.
 
 > [!warning]
-> The Trix demo code above is incomplete and only useful as a demonstration of event listeners. If used verbatim, a network request would be fired on every single key stroke. A more performant implementation would be:
+> The Trix demo code above is incomplete and only useful as a demonstration of event listeners. If used verbatim, a network request would be fired on every single keystroke. A more performant implementation would be:
 >
 > ```blade
 > <trix-editor
@@ -440,72 +468,102 @@ public function getPostCount()
 Using `$wire`, the action may be invoked and its returned value resolved:
 
 ```blade
-<span x-text="await $wire.getPostCount()"></span>
+<span x-init="$el.innerHTML = await $wire.getPostCount()"></span>
 ```
 
 In this example, if the `getPostCount()` method returns "10", the `<span>` tag will also contain "10".
 
 Alpine knowledge is not required when using Livewire; however, it's an extremely powerful tool and knowing Alpine will augment your Livewire experience and productivity.
 
-## Livewire's "hybrid" JavaScript functions
+## JavaScript actions
 
-Sometimes there are actions in your component that don't need to communicate with the server and can be more efficiently written using only JavaScript.
+Livewire allows you to define JavaScript actions that run entirely on the client-side without making a server request. This is useful in two scenarios:
 
-In these cases, rather than writing the actions inside your Blade template or another file, your component action may return the JavaScript function as a string. If the action is marked with the `#[Js]` attribute, it will be callable from your application's frontend:
+1. When you want to perform simple UI updates that don't require server communication
+2. When you want to optimistically update the UI with JavaScript before making a server request
 
-For example:
+To define a JavaScript action, you can use the `$js()` function inside a `<script>` tag in your component.
+
+Here's an example of bookmarking a post that uses a JavaScript action to optimistically update the UI before making a server request. The JavaScript action immediately shows the filled bookmark icon, then makes a request to persist the bookmark in the database:
 
 ```php
 <?php
 
 namespace App\Livewire;
 
-use Livewire\Attributes\Js;
 use Livewire\Component;
 use App\Models\Post;
 
-class SearchPosts extends Component
+class ShowPost extends Component
 {
-    public $query = '';
+    public Post $post;
 
-    #[Js] // [tl! highlight:6]
-    public function reset()
+    public $bookmarked = false;
+
+    public function mount()
     {
-        return <<<'JS'
-            $wire.query = '';
-        JS;
+        $this->bookmarked = $this->post->bookmarkedBy(auth()->user());
+    }
+
+    public function bookmarkPost()
+    {
+        $this->post->bookmark(auth()->user());
+
+        $this->bookmarked = $this->post->bookmarkedBy(auth()->user());
     }
 
     public function render()
     {
-        return view('livewire.search-posts', [
-            'posts' => Post::whereTitle($this->query)->get(),
-        ]);
+        return view('livewire.show-post');
     }
 }
 ```
 
 ```blade
 <div>
-    <input wire:model.live="query">
+    <button wire:click="$js.bookmark" class="flex items-center gap-1">
+        {{-- Outlined bookmark icon... --}}
+        <svg wire:show="!bookmarked" wire:cloak xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+        </svg>
 
-    <button wire:click="reset">Reset Search</button> <!-- [tl! highlight] -->
-
-    @foreach ($posts as $post)
-        <!-- ... -->
-    @endforeach
+        {{-- Solid bookmark icon... --}}
+        <svg wire:show="bookmarked" wire:cloak xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-6">
+            <path fill-rule="evenodd" d="M6.32 2.577a49.255 49.255 0 0 1 11.36 0c1.497.174 2.57 1.46 2.57 2.93V21a.75.75 0 0 1-1.085.67L12 18.089l-7.165 3.583A.75.75 0 0 1 3.75 21V5.507c0-1.47 1.073-2.756 2.57-2.93Z" clip-rule="evenodd" />
+        </svg>
+    </button>
 </div>
+
+@script
+<script>
+    $js('bookmark', () => {
+        $wire.bookmarked = !$wire.bookmarked
+
+        $wire.bookmarkPost()
+    })
+</script>
+@endscript
 ```
 
-In the above example, when the "Reset Search" button is pressed, the text input will be cleared without sending any requests to the server.
+When a user clicks the heart button, the following sequence occurs:
 
-### Evaluating one-off JavaScript expressions
+1. The "bookmark" JavaScript action is triggered
+2. The heart icon immediately updates by toggling `$wire.bookmarked` on the client-side
+3. The `bookmarkPost()` method is called to save the change to the database
 
-In addition to designating entire methods to be evaluated in JavaScript, you can use the `js()` method to evaluate smaller, individual expressions.
+This provides instant visual feedback while ensuring the bookmark state is properly persisted.
 
-This is generally useful for performing some kind of client-side follow-up after a server-side action is performed.
+### Calling from Alpine
 
-For example, here is an example of a `CreatePost` component that triggers a client-side alert dialog after the post is saved to the database:
+You can call JavaScript actions directly from Alpine using the `$wire` object. For example, you may use the `$wire` object to invoke the `bookmark` JavaScript action:
+
+```blade
+<button x-on:click="$wire.$js.bookmark()">Bookmark</button>
+```
+
+### Calling from PHP
+
+JavaScript actions can also be called using the `js()` method from PHP:
 
 ```php
 <?php
@@ -522,14 +580,28 @@ class CreatePost extends Component
     {
         // ...
 
-        $this->js("alert('Post saved!')"); // [tl! highlight:6]
+        $this->js('onPostSaved'); // [tl! highlight]
     }
 }
 ```
 
-The JavaScript expression `alert('Post saved!')` will now be executed on the client after the post has been saved to the database on the server.
+```blade
+<div>
+    <!-- ... -->
 
-Just like `#[Js]` methods, you can access the current component's `$wire` object inside the expression.
+    <button wire:click="save">Save</button>
+</div>
+
+@script
+<script>
+    $js('onPostSaved', () => {
+        alert('Your post has been saved successfully!')
+    })
+</script>
+@endscript
+```
+
+In this example, when the `save()` action is finished, the `postSaved` JavaScript action will be run, triggering the alert dialog.
 
 ## Magic actions
 
@@ -700,7 +772,7 @@ Just like controller request input, it's imperative to authorize action paramete
 
 Below is a `ShowPosts` component where users can view all their posts on one page. They can delete any post they like using one of the post's "Delete" buttons.
 
-Here is a vulnerable version of component:
+Here is a vulnerable version of the component:
 
 ```php
 <?php

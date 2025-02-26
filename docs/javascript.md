@@ -1,9 +1,124 @@
 
-Livewire provides plenty of JavaScript extension points for advanced users who want to use Livewire in deeper ways or extend Livewire's features with custom APIs.
+## Using JavaScript in Livewire components
+
+Livewire and Alpine provide plenty of utilities for building dynamic components directly in your HTML, however, there are times when it's helpful to break out of the HTML and execute plain JavaScript for your component. Livewire's `@script` and `@assets` directive allow you to do this in a predictable, maintainable way.
+
+### Executing scripts
+
+To execute bespoke JavaScript in your Livewire component, simply wrap a `<script>` element with `@script` and `@endscript`. This will tell Livewire to handle the execution of this JavaScript.
+
+Because scripts inside `@script` are handled by Livewire, they are executed at the perfect time after the page has loaded, but before the Livewire component has rendered. This means you no longer need to wrap your scripts in `document.addEventListener('...')` to load them properly.
+
+This also means that lazily or conditionally loaded Livewire components are still able to execute JavaScript after the page has initialized.
+
+```blade
+<div>
+    ...
+</div>
+
+@script
+<script>
+    // This Javascript will get executed every time this component is loaded onto the page...
+</script>
+@endscript
+```
+
+Here's a more full example where you can do something like register a JavaScript action that is used in your Livewire component.
+
+```blade
+<div>
+    <button wire:click="$js.increment">+</button>
+</div>
+
+@script
+<script>
+    $js('increment', () => {
+        console.log('increment')
+    })
+</script>
+@endscript
+```
+
+To learn more about JavaScript actions, [visit the actions documentation](/docs/actions#javascript-actions).
+
+### Using `$wire` from scripts
+
+Another helpful feature of using `@script` for your JavaScript is that you automatically have access to your Livewire component's `$wire` object.
+
+Here's an example of using a simple `setInterval` to refresh the component every 2 seconds (You could easily do this with [`wire:poll`](/docs/wire-poll), but it's a simple way to demonstrate the point):
+
+You can learn more about `$wire` on the [`$wire` documentation](#the-wire-object).
+
+```blade
+@script
+<script>
+    setInterval(() => {
+        $wire.$refresh()
+    }, 2000)
+</script>
+@endscript
+```
+
+### Evaluating one-off JavaScript expressions
+
+In addition to designating entire methods to be evaluated in JavaScript, you can use the `js()` method to evaluate smaller, individual expressions on the backend.
+
+This is generally useful for performing some kind of client-side follow-up after a server-side action is performed.
+
+For example, here is an example of a `CreatePost` component that triggers a client-side alert dialog after the post is saved to the database:
+
+```php
+<?php
+
+namespace App\Livewire;
+
+use Livewire\Component;
+
+class CreatePost extends Component
+{
+    public $title = '';
+
+    public function save()
+    {
+        // ...
+
+        $this->js("alert('Post saved!')"); // [tl! highlight:6]
+    }
+}
+```
+
+The JavaScript expression `alert('Post saved!')` will now be executed on the client after the post has been saved to the database on the server.
+
+You can access the current component's `$wire` object inside the expression.
+
+### Loading assets
+
+The `@script` directive is useful for executing a bit of JavaScript every time a Livewire component loads, however, there are times you might want to load entire script and style assets on the page along with the component.
+
+Here is an example of using `@assets` to load a date picker library called [Pikaday](https://github.com/Pikaday/Pikaday) and initialize it inside your component using `@script`:
+
+```blade
+<div>
+    <input type="text" data-picker>
+</div>
+
+@assets
+<script src="https://cdn.jsdelivr.net/npm/pikaday/pikaday.js" defer></script>
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/pikaday/css/pikaday.css">
+@endassets
+
+@script
+<script>
+    new Pikaday({ field: $wire.$el.querySelector('[data-picker]') });
+</script>
+@endscript
+```
+
+When this component loads, Livewire will make sure any `@assets` are loaded on that page before evaluating `@script`s. In addition, it will ensure the provided `@assets` are only loaded once per page no matter how many instances of this component there are, unlike `@script`, which will evaluate for every component instance on the page.
 
 ## Global Livewire events
 
-Livewire dispatches two helpful browser events for you to register any custom extension points:
+Livewire dispatches two helpful browser events for you to register any custom extension points from outside scripts:
 
 ```html
 <script>
@@ -24,7 +139,7 @@ Livewire dispatches two helpful browser events for you to register any custom ex
 
 ## The `Livewire` global object
 
-Livewire's global object is the best starting point for interacting with Livewire in JavaScript.
+Livewire's global object is the best starting point for interacting with Livewire from external scripts.
 
 You can access the global `Livewire` JavaScript object on `window` from anywhere inside your client-side code.
 
@@ -70,9 +185,28 @@ Livewire.on('post-created', ({ postId }) => {
 })
 ```
 
-### Accessing hooks
+In certain scenarios, you might need to unregister global Livewire events. For instance, when working with Alpine components and `wire:navigate`, multiple listeners may be registered as `init` is called when navigating between pages. To address this, utilize the `destroy` function, automatically invoked by Alpine. Loop through all your listeners within this function to unregister them and prevent any unwanted accumulation.
 
-Livewire allows you to hook into various parts of its internal lifecycle using `Livewire.hook()`:
+```js
+Alpine.data('MyComponent', () => ({
+    listeners: [],
+    init() {
+        this.listeners.push(
+            Livewire.on('post-created', (options) => {
+                // Do something...
+            })
+        );
+    },
+    destroy() {
+        this.listeners.forEach((listener) => {
+            listener();
+        });
+    }
+}));
+```
+### Using lifecycle hooks
+
+Livewire allows you to hook into various parts of its global lifecycle using `Livewire.hook()`:
 
 ```js
 // Register a callback to execute on a given internal Livewire hook...
@@ -125,22 +259,6 @@ Livewire.directive('confirm', ({ el, directive, component, cleanup }) => {
 })
 ```
 
-### Controlling Livewire's initialization
-
-In general, you shouldn't need to manually start or stop Livewire, however, if you find yourself needing this behavior, Livewire makes it available to you via the following methods:
-
-```js
-// Start Livewire on a page that doesn't have Livewire running...
-Livewire.start()
-
-// Stop Livewire and teardown its JavaScript runtime
-// (remove event listeners and such)...
-Livewire.stop()
-
-// Force Livewire to scan the DOM for any components it may have missed...
-Livewire.rescan()
-```
-
 ## Object schemas
 
 When extending Livewire's JavaScript system, it's important to understand the different objects you might encounter.
@@ -189,6 +307,12 @@ let $wire = {
     // Access the `$wire` object of the parent component if one exists...
     $parent,
 
+    // Access the root DOM element of the Livewire component...
+    $el,
+
+    // Access the ID of the current Livewire component...
+    $id,
+
     // Get the value of a property by name...
     // Usage: $wire.$get('count')
     $get(name) { ... },
@@ -200,9 +324,13 @@ let $wire = {
     // Toggle the value of a boolean property...
     $toggle(name, live = true) { ... },
 
-    // Call the method
+    // Call the method...
     // Usage: $wire.$call('increment')
     $call(method, ...params) { ... },
+
+    // Define a JavaScript action...
+    // Usage: $wire.$js('increment', () => { ... })
+    $js(name, callback) { ... },
 
     // Entangle the value of a Livewire property with a different,
     // arbitrary, Alpine property...
@@ -223,6 +351,10 @@ let $wire = {
     // Listen for a an event dispatched from this component or its children...
     // Usage: $wire.$on('post-created', () => { ... })
     $on(event, callback) { ... },
+
+    // Listen for a lifecycle hook triggered from this component or the request...
+    // Usage: $wire.$hook('commit', () => { ... })
+    $hook(name, callback) { ... },
 
     // Dispatch an event from this component...
     // Usage: $wire.$dispatch('post-created', { postId: 2 })
@@ -297,8 +429,8 @@ let snapshot = {
         errors: [],
     },
 
-    // A securely encryped hash of this snapshot. This way,
-    // if a malicous user tampers with the snapshot with
+    // A securely encrypted hash of this snapshot. This way,
+    // if a malicious user tampers with the snapshot with
     // the goal of accessing un-owned resources on the server,
     // the checksum validation will fail and an error will
     // be thrown...
@@ -441,6 +573,18 @@ Livewire.hook('morph.added',  ({ el }) => {
 })
 ```
 
+In addition to the events fired per element, a `morph` and `morphed` event is fired for each Livewire component:
+
+```js
+Livewire.hook('morph',  ({ el, component }) => {
+	// Runs just before the child elements in `component` are morphed
+})
+
+Livewire.hook('morphed',  ({ el, component }) => {
+    // Runs after all child elements in `component` are morphed
+})
+```
+
 ### Commit hooks
 
 Because Livewire requests contain multiple components, _request_ is too broad of a term to refer to an individual component's request and response payload. Instead, internally, Livewire refers to component updates as _commits_ — in reference to _committing_ component state to the server.
@@ -452,7 +596,7 @@ These hooks expose `commit` objects. You can learn more about their schema by re
 The `commit.prepare` hook will be triggered immediately before a request is sent to the server. This gives you a chance to add any last minute updates or actions to the outgoing request:
 
 ```js
-Livewire.hook('commit.prepare', ({ component, commit }) => {
+Livewire.hook('commit.prepare', ({ component }) => {
     // Runs before commit payloads are collected and sent to the server...
 })
 ```
@@ -487,7 +631,7 @@ Livewire.hook('commit', ({ component, commit, respond, succeed, fail }) => {
 If you would like to instead hook into the entire HTTP request going and returning from the server, you can do so using the `request` hook:
 
 ```js
-Livewire.hook('request', ({ uri, options, payload, respond, succeed, fail }) => {
+Livewire.hook('request', ({ url, options, payload, respond, succeed, fail }) => {
     // Runs after commit payloads are compiled, but before a network request is sent...
 
     respond(({ status, response }) => {

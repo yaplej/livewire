@@ -1,7 +1,7 @@
-import { dataSet, deepClone, deeplyEqual, diff, extractData} from './utils'
-import { processEffects } from './commit'
-import { generateWireObject } from './$wire'
-import { findComponent } from './store';
+import { dataSet, deepClone, diff, extractData} from '@/utils'
+import { generateWireObject } from '@/$wire'
+import { closestComponent, findComponent } from '@/store'
+import { trigger } from '@/hooks'
 
 export class Component {
     constructor(el) {
@@ -35,13 +35,17 @@ export class Component {
         // "reactive" is just ephemeral, except when you mutate it, front-ends like Vue react.
         this.reactive = Alpine.reactive(this.ephemeral)
 
+        this.queuedUpdates = {}
+
+        this.jsActions = {}
+
         // this.$wire = this.reactive
         this.$wire = generateWireObject(this, this.reactive)
 
         this.cleanups = []
 
         // Effects will be processed after every request, but we'll also handle them on initialization.
-        processEffects(this, this.effects)
+        this.processEffects(this.effects)
     }
 
     mergeNewSnapshot(snapshotEncoded, effects, updates = {}) {
@@ -77,6 +81,32 @@ export class Component {
         return dirty
     }
 
+    queueUpdate(propertyName, value) {
+        // These updates will be applied first on the server
+        // on the next request, then trickle back to the
+        // client on the next request that gets sent.
+        this.queuedUpdates[propertyName] = value
+    }
+
+    mergeQueuedUpdates(diff) {
+        // Before adding queuedUpdates into the diff list, we will remove any diffs
+        // that will be overriden by the queued update. Queued updates will take
+        // priority against ephemeral updates that have happend since them...
+        Object.entries(this.queuedUpdates).forEach(([updateKey, updateValue]) => {
+            Object.entries(diff).forEach(([diffKey, diffValue]) => {
+                if (diffKey.startsWith(updateValue)) {
+                    delete diff[diffKey]
+                }
+            })
+
+            diff[updateKey] = updateValue
+        })
+
+        this.queuedUpdates = []
+
+        return diff
+    }
+
     applyUpdates(object, updates) {
         for (let key in updates) {
             dataSet(object, key, updates[key])
@@ -90,7 +120,23 @@ export class Component {
 
         this.mergeNewSnapshot(JSON.stringify(snapshot), effects)
 
-        processEffects(this, { html })
+        this.processEffects({ html })
+    }
+
+    /**
+     * Here we'll take the new state and side effects from the
+     * server and use them to update the existing data that
+     * users interact with, triggering reactive effects.
+     */
+    processEffects(effects) {
+        // This is for BC.
+        trigger('effects', this, effects)
+
+        trigger('effect', {
+            component: this,
+            effects,
+            cleanup: i => this.addCleanup(i)
+        })
     }
 
     get children() {
@@ -98,6 +144,10 @@ export class Component {
         let childIds = Object.values(meta.children).map(i => i[1])
 
         return childIds.map(id => findComponent(id))
+    }
+
+    get parent() {
+        return closestComponent(this.el.parentElement)
     }
 
     inscribeSnapshotAndEffectsOnElement() {
@@ -115,7 +165,28 @@ export class Component {
             effects.url = this.originalEffects.url
         }
 
+        // We need to re-register any scripts that were originally registered...
+        if (this.originalEffects.scripts) {
+            effects.scripts = this.originalEffects.scripts;
+        }
+
         el.setAttribute('wire:effects', JSON.stringify(effects))
+    }
+
+    addJsAction(name, action) {
+        this.jsActions[name] = action
+    }
+
+    hasJsAction(name) {
+        return this.jsActions[name] !== undefined
+    }
+
+    getJsAction(name) {
+        return this.jsActions[name].bind(this.$wire)
+    }
+
+    getJsActions() {
+        return this.jsActions
     }
 
     addCleanup(cleanup) {
@@ -123,6 +194,8 @@ export class Component {
     }
 
     cleanup() {
+        delete this.el.__livewire
+
         while (this.cleanups.length > 0) {
             this.cleanups.pop()()
         }

@@ -8,6 +8,9 @@ composer require livewire/livewire
 
 That's it — really. If you want more customization options, keep reading. Otherwise, you can jump right into using Livewire.
 
+> [!warning] `/livewire/livewire.js` returning a 404 status code
+> By default, Livewire exposes a route in your application to serve its JavaScript assets from: `/livewire/livewire.js`. This is fine for most applications, however, if you are using Nginx with a custom configuration, you may receive a 404 from this endpoint. To fix this issue, you can either [compile Livewire's JavaScript assets yourself](#manually-bundling-livewire-and-alpine), or [configure Nginx to allow for this](https://benjamincrozat.com/livewire-js-404-not-found).
+
 ## Publishing the configuration file
 
 Livewire is "zero-config", meaning you can use it by following conventions, without any additional configuration. However, if needed, you can publish and customize Livewire's configuration file by running the following Artisan command:
@@ -42,7 +45,7 @@ By including these assets manually on a page, Livewire knows not to inject the a
 > [!warning] AlpineJS is bundled with Livewire
 > Because Alpine is bundled with Livewire's JavaScript assets, you must include @verbatim`@livewireScripts`@endverbatim on every page you wish to use Alpine. Even if you're not using Livewire on that page.
 
-Though rarely required, you may disable Livewire's auto-injecting asset behavior by updating the `inject_assets` [configuration option](#publishing-config) in your application's `config/livewire.php` file:
+Though rarely required, you may disable Livewire's auto-injecting asset behavior by updating the `inject_assets` [configuration option](#publishing-the-configuration-file) in your application's `config/livewire.php` file:
 
 ```php
 'inject_assets' => false,
@@ -146,3 +149,34 @@ Alpine.plugin(Clipboard)
 
 Livewire.start()
 ```
+
+> [!tip] Rebuild your assets after composer update
+> Make sure that if you are manually bundling Livewire and Alpine, that you rebuild your assets whenever you run `composer update`.
+
+> [!warning] Not compatible with Laravel Mix
+> Laravel Mix will not work if you are manually bundling Livewire and AlpineJS. Instead, we recommend that you [switch to Vite](https://laravel.com/docs/vite).
+
+## Publishing Livewire's frontend assets
+
+> [!warning] Publishing assets isn't necessary
+> Publishing Livewire's assets isn't necessary for Livewire to run. Only do this if you have a specific need for it.
+
+If you prefer the JavaScript assets to be served by your web server not through Laravel, use the `livewire:publish` command:
+
+```bash
+php artisan livewire:publish --assets
+```
+
+To keep assets up-to-date and avoid issues in future updates, we strongly recommend that you add the following command to your composer.json file:
+
+```json
+{
+    "scripts": {
+        "post-update-cmd": [
+            // Other scripts
+            "@php artisan vendor:publish --tag=livewire:assets --ansi --force"
+        ]
+    }
+}
+```
+

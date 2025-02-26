@@ -2,16 +2,13 @@
 
 namespace Livewire\Features\SupportEntangle;
 
-use Illuminate\Support\Str;
-use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\Livewire;
 use Tests\BrowserTestCase;
 
 class BrowserTest extends BrowserTestCase
 {
-    /** @test */
-    public function can_persist_entangled_data()
+    public function test_can_persist_entangled_data()
     {
         Livewire::visit(new class extends Component {
             public $input;
@@ -34,8 +31,7 @@ class BrowserTest extends BrowserTestCase
             ;
     }
 
-    /** @test */
-    public function is_not_live_by_default()
+    public function test_is_not_live_by_default()
     {
         Livewire::visit(new class extends Component {
             public $foo = 'foo';
@@ -66,8 +62,7 @@ class BrowserTest extends BrowserTestCase
             ->assertSeeIn('@state', 'bar');
     }
 
-    /** @test */
-    public function can_be_forced_to_not_be_live()
+    public function test_can_be_forced_to_not_be_live()
     {
         Livewire::visit(new class extends Component {
             public $foo = 'foo';
@@ -98,8 +93,7 @@ class BrowserTest extends BrowserTestCase
             ->assertSeeIn('@state', 'bar');
     }
 
-    /** @test */
-    public function can_be_live()
+    public function test_can_be_live()
     {
         Livewire::visit(new class extends Component {
             public $foo = 'foo';
@@ -124,8 +118,7 @@ class BrowserTest extends BrowserTestCase
             ->assertSeeIn('@state', 'bar');
     }
 
-    /** @test */
-    public function can_remove_entangled_components_from_dom_without_side_effects()
+    public function test_can_remove_entangled_components_from_dom_without_side_effects()
     {
         Livewire::visit(new class extends Component {
             public $items = [];
@@ -202,8 +195,7 @@ class BrowserTest extends BrowserTestCase
             ->assertMissing('@item3');
     }
 
-    /** @test */
-    public function can_remove_dollar_sign_entangled_components_from_dom_without_side_effects()
+    public function test_can_remove_dollar_sign_entangled_components_from_dom_without_side_effects()
     {
         Livewire::visit(new class extends Component {
             public $items = [];
@@ -280,8 +272,7 @@ class BrowserTest extends BrowserTestCase
             ->assertMissing('@item3');
     }
 
-    /** @test */
-    public function can_removed_nested_items_without_multiple_requests_when_entangled_items_are_present()
+    public function test_can_removed_nested_items_without_multiple_requests_when_entangled_items_are_present()
     {
         Livewire::visit(new class extends Component {
             public $components = [];
@@ -385,5 +376,63 @@ class BrowserTest extends BrowserTestCase
         ->assertSeeIn('@counter', '12')
         ->waitForLivewire()->click('@remove-entangled')
         ->assertSeeIn('@counter', '13');
+    }
+
+    public function test_can_reorder_entangled_keys()
+    {
+        Livewire::visit(new class extends Component {
+            public $test = [
+                'one' => 'One',
+                'two' => 'Two',
+                'three' => 'Three',
+            ];
+
+            function render()
+            {
+                return <<<'HTML'
+                <div>
+                    <div dusk="output">Test: {{ json_encode($test) }}</div>
+
+                    <div>
+                        <button dusk="set" wire:click="$set('test', { one: 'One', three: 'Three', two: 'Two' })" type="button">
+                            Set test to {"one":"One","three":"Three","two":"Two"}
+                        </button>
+                    </div>
+
+                    <div>
+                        <button dusk="set-add" wire:click="$set('test', { one: 'One', three: 'Three', two: 'Two', four: 'Four' })" type="button">
+                            Set test to {"one":"One","three":"Three","two":"Two","four":"Four"}
+                        </button>
+                    </div>
+
+                    <!-- This is meant to fail for now... We're only tackling key preservance for $wire.$set()...  -->
+                    <!-- <div x-data="{ test: $wire.entangle('test', true) }">
+                        <div>
+                            <button dusk="set-alpine" x-on:click="test = { one: 'One', three: 'Three', two: 'Two' }" type="button">
+                                Set test to {"one":"One","three":"Three","two":"Two"} with Alpine
+                            </button>
+                        </div>
+
+                        <div>
+                            <button dusk="set-add-alpine" x-on:click="test = { one: 'One', three: 'Three', two: 'Two', four: 'Four' }" type="button">
+                                Set test to {"one":"One","three":"Three","two":"Two","four":"Four"} with Alpine
+                            </button>
+                        </div>
+                    </div> -->
+                </div>
+                HTML;
+            }
+        })
+        ->assertSeeIn('@output', json_encode(['one' => 'One', 'two' => 'Two', 'three' => 'Three']))
+        ->waitForLivewire()->click('@set')
+        ->assertSeeIn('@output', json_encode(['one' => 'One', 'three' => 'Three', 'two' => 'Two']))
+        ->waitForLivewire()->click('@set-add')
+        ->assertSeeIn('@output', json_encode(['one' => 'One', 'three' => 'Three', 'two' => 'Two', 'four' => 'Four']))
+        // This is meant to fail for now... We're only tackling key preservance for $wire.$set()...
+        // ->waitForLivewire()->click('@set-alpine')
+        // ->assertSeeIn('@output', json_encode(['one' => 'One', 'three' => 'Three', 'two' => 'Two']))
+        // ->waitForLivewire()->click('@set-add-alpine')
+        // ->assertSeeIn('@output', json_encode(['one' => 'One', 'three' => 'Three', 'two' => 'Two', 'four' => 'Four']));
+        ;
     }
 }

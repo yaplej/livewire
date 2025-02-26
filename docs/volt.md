@@ -156,15 +156,12 @@ Sometimes, you may wish to interact with the view instance directly, for example
 use Illuminate\View\View;
 use Livewire\Volt\Component;
 
-class extends Component
-{
-    public function rendering(View $view): View
+new class extends Component {
+    public function rendering(View $view): void
     {
         $view->title('Create Post');
 
         // ...
-
-        return $view;
     }
 
     // ...
@@ -245,6 +242,18 @@ title('Users');
 // ...
 ```
 
+If the title relies on component state or an external dependency, you may pass a closure to the `title` function instead:
+
+```php
+use function Livewire\Volt\{layout, state, title};
+
+state('users');
+
+layout('components.layouts.admin');
+
+title(fn () => 'Users: ' . $this->users->count());
+```
+
 ## Properties
 
 Volt properties, like Livewire properties, are conveniently accessible in the view and persist between Livewire updates. You can define a property using the `state` function:
@@ -313,6 +322,16 @@ To achieve this using Volt, you may chain the `reactive` method on the state you
 state(['todos'])->reactive();
 ```
 
+### Modelable properties
+
+In cases where you don't want to make use of reactive properties, Livewire provides a [modelable feature](/docs/nesting#binding-to-child-data-using-wiremodel) where you may share state between parent component and child component using `wire:model` directly on a child component.
+
+To achieve this using Volt, simply chain the `modelable` method on the state you wish to be modelable:
+
+```php
+state(['form'])->modelable();
+```
+
 ### Computed properties
 
 Livewire also allows you to define [computed properties](/docs/computed-properties), which can be useful for lazily fetching information needed by your component. Computed property results are "memoized", or cached in memory, for an individual Livewire request lifecycle.
@@ -344,7 +363,7 @@ $count = computed(function () {
 })->persist();
 ```
 
-By default, Livewire caches the computed computed property's value for 3600 seconds. You may customize this value by providing the desired number of seconds to the `persist` method:
+By default, Livewire caches the computed property's value for 3600 seconds. You may customize this value by providing the desired number of seconds to the `persist` method:
 
 ```php
 $count = computed(function () {
@@ -627,7 +646,7 @@ $posts = computed(function () {
 ?>
 
 <div>
-    <input wire:model="search" type="search" placeholder="Search posts by title...">
+    <input wire:model.live="search" type="search" placeholder="Search posts by title...">
 
     <h1>Search Results:</h1>
 

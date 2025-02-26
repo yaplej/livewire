@@ -1,10 +1,11 @@
 import { callAndClearComponentDebounces } from '@/debounce'
-import { getDirectives } from '@/directives'
-import { on } from '@/events'
+import { customDirectiveHasBeenRegistered } from '@/directives'
+import { on } from '@/hooks'
 import Alpine from 'alpinejs'
 
 on('directive.init', ({ el, directive, cleanup, component }) => {
     if (['snapshot', 'effects', 'model', 'init', 'loading', 'poll', 'ignore', 'id', 'data', 'key', 'target', 'dirty'].includes(directive.value)) return
+    if (customDirectiveHasBeenRegistered(directive.value)) return
 
     let attribute = directive.rawName.replace('wire:', 'x-on:')
 
@@ -26,6 +27,8 @@ on('directive.init', ({ el, directive, cleanup, component }) => {
             if (el.__livewire_confirm) {
                 el.__livewire_confirm(() => {
                     execute()
+                }, () => {
+                    e.stopImmediatePropagation()
                 })
             } else {
                 execute()

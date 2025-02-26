@@ -14,6 +14,7 @@ build({
     format: 'esm',
     entryPoints: [`js/index.js`],
     outfile: `dist/livewire.esm.js`,
+    sourcemap: 'linked',
     bundle: true,
     platform: 'node',
     define: { CDN: true },
@@ -29,6 +30,7 @@ fs.writeFileSync(__dirname+'/../dist/manifest.json', `
 build({
     entryPoints: [`js/index.js`],
     outfile: `dist/livewire.min.js`,
+    sourcemap: 'linked',
     bundle: true,
     minify: true,
     platform: 'browser',

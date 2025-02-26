@@ -36,6 +36,8 @@ class Dashboard extends Component
 
 On this page's initial render, the `Dashboard` component will encounter `<livewire:todo-list />` and render it in place. On a subsequent network request to `Dashboard`, the nested `todo-list` component will skip rendering because it is now its own independent component on the page. For more information on the technical concepts behind nesting and rendering, consult our documentation on why [nested components are "islands"](/docs/understanding-nesting#every-component-is-an-island).
 
+For more information about the syntax for rendering components, consult our documentation on [Rendering Components](/docs/components#rendering-components).
+
 ## Passing props to children
 
 Passing data from a parent component to a child component is straightforward. In fact, it's very much like passing props to a typical [Blade component](https://laravel.com/docs/blade#components).
@@ -229,10 +231,8 @@ class TodoList extends Component
     public function add()
     {
         Todo::create([
-            'content' => $this->todo,
+            'content' => $this->pull('todo'),
         ]);
-
-        $this->reset('todo');
     }
 
     public function render()
@@ -353,6 +353,7 @@ namespace App\Livewire;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 use App\Models\Todo;
+use Livewire\Attributes\On;
 
 class TodoList extends Component
 {
@@ -512,7 +513,7 @@ class Steps extends Component
 
 ```blade
 <div>
-    <livewire:dynamic-component :is="$current" />
+    <livewire:dynamic-component :is="$current" :key="$current" />
 
     <button wire:click="next">Next</button>
 </div>
@@ -539,8 +540,13 @@ class StepOne extends Component
 If you prefer, you can use the alternative syntax:
 
 ```blade
-<livewire:is :component="$current" />
+<livewire:is :component="$current" :key="$current" />
 ```
+
+> [!warning]
+> Don't forget to assign each child component a unique key. Although Livewire automatically generates a key for `<livewire:dynamic-child />` and `<livewire:is />`, that same key will apply to _all_ your child components, meaning subsequent renders will be skipped.
+> 
+> See [forcing a child component to re-render](#forcing-a-child-component-to-re-render) for a deeper understanding of how keys affect component rendering.
 
 ## Recursive components
 
